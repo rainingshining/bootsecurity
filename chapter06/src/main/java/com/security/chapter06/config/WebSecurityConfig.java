@@ -11,6 +11,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.builders.WebSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl;
@@ -42,12 +43,19 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     @Autowired
     private CustomAuthenticationSuccessHandler customAuthenticationSuccessHandler;
 
+    @Autowired
+    private SessionRegistry sessionRegistry;
+
+    @Autowired
+    private CustomLogoutSuccessHandler customLogoutSuccessHandler;
+
     /**
      * 将token写入数据库
+     *
      * @return
      */
     @Bean
-    public PersistentTokenRepository persistentTokenRepository(){
+    public PersistentTokenRepository persistentTokenRepository() {
         JdbcTokenRepositoryImpl tokenRepository = new JdbcTokenRepositoryImpl();
         tokenRepository.setDataSource(dataSource);
         // 如果token表不存在，使用下面语句可以初始化该表；若存在，请注释掉这条语句，否则会报错。
@@ -77,7 +85,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         http.authorizeRequests()
                 // 如果有允许匿名的url，填在下面
 //                .antMatchers().permitAll()
-                .antMatchers("/getVerifyCode").permitAll()//允许访问验证码接口
+                .antMatchers("/getVerifyCode", "/login/invalid").permitAll()//允许访问验证码接口
                 .anyRequest().authenticated()
                 .and()
                 // 设置登陆页
@@ -95,20 +103,28 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 //                .passwordParameter("password")
                 .and()
 //                .addFilterBefore(new VerifyFilter(), UsernamePasswordAuthenticationFilter.class)//访问时优先通过验证码过滤验证
-                .logout().permitAll()
+                .logout().logoutUrl("/signout").deleteCookies("JSESSIONID").logoutSuccessHandler(customLogoutSuccessHandler).permitAll()
                 //自动登录：只添加该方法会将token存放在Cookie中，需配合数据库进行安全存储
                 /*
-                *当通过 UsernamePasswordAuthenticationFilter 认证成功后，会经过 RememberMeService，
-                * 在其中有个 TokenRepository，它会生成一个 token，首先将 token 写入到浏览器的 Cookie 中，
-                * 然后将 token、认证成功的用户名写入到数据库中.
-                * 当浏览器下次请求时，会经过 RememberMeAuthenticationFilter，它会读取 Cookie 中的 token，
-                * 交给 RememberMeService 从数据库中查询记录。如果存在记录，会读取用户名并去调用 UserDetailsService，
-                * 获取用户信息，并将用户信息放入Spring Security 中，实现自动登陆.
-                * RememberMeAuthenticationFilter 在整个过滤器链中是比较靠后的位置，也就是说在传统登录方式都无法登录的情况下才会使用自动登陆.
-                *
-                * 将persistentTokenRepository注入
-                */
-                .and().rememberMe().tokenRepository(persistentTokenRepository()).tokenValiditySeconds(60).userDetailsService(userDetailsService);
+                 *当通过 UsernamePasswordAuthenticationFilter 认证成功后，会经过 RememberMeService，
+                 * 在其中有个 TokenRepository，它会生成一个 token，首先将 token 写入到浏览器的 Cookie 中，
+                 * 然后将 token、认证成功的用户名写入到数据库中.
+                 * 当浏览器下次请求时，会经过 RememberMeAuthenticationFilter，它会读取 Cookie 中的 token，
+                 * 交给 RememberMeService 从数据库中查询记录。如果存在记录，会读取用户名并去调用 UserDetailsService，
+                 * 获取用户信息，并将用户信息放入Spring Security 中，实现自动登陆.
+                 * RememberMeAuthenticationFilter 在整个过滤器链中是比较靠后的位置，也就是说在传统登录方式都无法登录的情况下才会使用自动登陆.
+                 *
+                 * 将persistentTokenRepository注入
+                 */
+                .and().rememberMe().tokenRepository(persistentTokenRepository()).tokenValiditySeconds(60).userDetailsService(userDetailsService)
+                .and().sessionManagement()
+                /*两者只需要使用其中一个*/
+                .invalidSessionUrl("/login/invalid")
+//                .invalidSessionStrategy(new CustomSessionOverDueStrategy())
+                .maximumSessions(1)
+                .maxSessionsPreventsLogin(true)//当设置为false时，两个浏览器可以登录，但先登录的会被踢出；当设置为true时，只能有一个浏览器登录
+                .expiredSessionStrategy(new CustomSessionExpireStrategy()).sessionRegistry(sessionRegistry)
+        ;
 
         // 关闭CSRF跨域
         http.csrf().disable();

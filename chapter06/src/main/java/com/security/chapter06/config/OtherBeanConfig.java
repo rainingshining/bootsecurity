@@ -4,6 +4,8 @@ import com.security.chapter06.verify.VerifyServlet;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.web.access.expression.DefaultWebSecurityExpressionHandler;
 
 @Configuration
@@ -23,5 +25,10 @@ public class OtherBeanConfig {
         DefaultWebSecurityExpressionHandler handler = new DefaultWebSecurityExpressionHandler();
         handler.setPermissionEvaluator(new CustomPermissionEvaluator());
         return handler;
+    }
+
+    @Bean
+    public SessionRegistry sessionRegistry(){
+        return new SessionRegistryImpl();
     }
 }
